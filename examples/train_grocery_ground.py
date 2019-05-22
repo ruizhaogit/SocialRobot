@@ -17,7 +17,7 @@ r"""Train and Eval GroceryGround.
 A simple test for SocialBot-GroceryGround env use TF-Agents
 The original file is from the PPO example of TF-Agents:
     https://github.com/tensorflow/agents
-Some parameters are modifed suite the environment.
+Some parameters are modified to suite the environment.
 Require about 30K episodes/3.6M steps to train the nvaigation task
 
 To run:
@@ -60,35 +60,36 @@ import gin.tf
 
 flags.DEFINE_string('root_dir', '~/tmp/GroceryGroundExample',
                     'Root directory for writing logs/summaries/checkpoints.')
-flags.DEFINE_boolean('use_rnns', True,
+flags.DEFINE_boolean('use_rnns', False,
                      'If true, use RNN for policy and value function.')
 FLAGS = flags.FLAGS
 
+parallel_num = 8
+train_num_epochs = parallel_num*2
 
 @gin.configurable
 def train_eval(
         root_dir,
         env_name='SocialBot-GroceryGround-v0',
-        env_load_fn=suite_socialbot.load,
         random_seed=0,
         # TODO(b/127576522): rename to policy_fc_layers.
-        actor_fc_layers=(192, 64),
-        value_fc_layers=(192, 64),
+        actor_fc_layers=(256, 64, 32),
+        value_fc_layers=(256, 64, 32),
         use_rnns=False,
         # Params for collect
         num_environment_steps=10000000,
-        collect_episodes_per_iteration=8,
-        num_parallel_environments=8,
-        replay_buffer_capacity=2001,  # Per-environment
+        collect_episodes_per_iteration=parallel_num,
+        num_parallel_environments=parallel_num,
+        replay_buffer_capacity=1001,  # Per-environment
         # Params for train
-        num_epochs=16,
+        num_epochs=train_num_epochs,
         learning_rate=1e-4,
         # Params for eval
         num_eval_episodes=10,
         eval_interval=500,
         # Params for summaries and logging
-        log_interval=50,
-        summary_interval=50,
+        log_interval=64,
+        summary_interval=64,
         summaries_flush_secs=1,
         use_tf_functions=True,
         debug_summaries=False,
@@ -116,10 +117,11 @@ def train_eval(
             lambda: tf.math.equal(global_step % summary_interval, 0)):
         # Create envs and optimizer
         tf.compat.v1.set_random_seed(random_seed)
-        eval_tf_env = tf_py_environment.TFPyEnvironment(env_load_fn(env_name))
+        eval_tf_env = tf_py_environment.TFPyEnvironment(suite_socialbot.load(env_name))
+        # Does not need to wrap with process for multi process training env
         tf_env = tf_py_environment.TFPyEnvironment(
             parallel_py_environment.ParallelPyEnvironment(
-                [lambda: env_load_fn(env_name)] * num_parallel_environments))
+                [lambda: suite_socialbot.load(env_name,wrap_with_process=False)] * num_parallel_environments))
         optimizer = tf.compat.v1.train.AdamOptimizer(
             learning_rate=learning_rate)
         # Create actor and value network
@@ -177,8 +179,9 @@ def train_eval(
             num_episodes=collect_episodes_per_iteration)
         if use_tf_functions:
             # TODO(b/123828980): Enable once the cause for slowdown was identified.
-            collect_driver.run = common.function(
-                collect_driver.run, autograph=False)
+            # use tf_function makes collect_time about 20x slower when take image as observation
+            # collect_driver.run = common.function(
+            #    collect_driver.run, autograph=False)
             tf_agent.train = common.function(tf_agent.train, autograph=False)
 
         collect_time = 0

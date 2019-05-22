@@ -57,7 +57,8 @@ class SimpleNavigation(gym.Env):
         self._with_language = with_language
 
         # get observation dimension
-        image = self._agent.get_camera_observation("camera")
+        image = self._agent.get_camera_observation(
+            "default::pioneer2dx_noplugin::camera::camera")
         image = np.array(image, copy=False)
         if with_language:
             self._observation_space = gym.spaces.Dict(
@@ -114,7 +115,8 @@ class SimpleNavigation(gym.Env):
         teacher_action = self._teacher.teach(sentence)
         self._agent.take_action(controls)
         self._world.step(100)
-        image = self._agent.get_camera_observation("camera")
+        image = self._agent.get_camera_observation(
+            "default::pioneer2dx_noplugin::camera::camera")
         image = np.array(image, copy=False)
         if self._with_language:
             obs = OrderedDict(image=image, sentence=teacher_action.sentence)
@@ -125,7 +127,8 @@ class SimpleNavigation(gym.Env):
     def reset(self):
         self._teacher.reset(self._agent, self._world)
         teacher_action = self._teacher.teach("")
-        image = self._agent.get_camera_observation("camera")
+        image = self._agent.get_camera_observation(
+            "default::pioneer2dx_noplugin::camera::camera")
         image = np.array(image, copy=False)
         if self._with_language:
             obs = OrderedDict(image=image, sentence=teacher_action.sentence)

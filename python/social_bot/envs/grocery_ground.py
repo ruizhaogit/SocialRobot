@@ -19,7 +19,7 @@ import time
 import logging
 import numpy as np
 import random
-import PIL
+import cv2
 import itertools
 
 import gym
@@ -76,7 +76,6 @@ class GroceryGroundGoalTask(teacher_tasks.GoalTask):
                 agent_sentence = yield TeacherAction(
                     reward=10.0, sentence="Well done!", done=True)
                 steps_since_last_reward = 0
-                self._move_goal(goal, loc)
             else:
                 if self._reward_shaping:
                     agent_sentence = yield TeacherAction(
@@ -85,8 +84,8 @@ class GroceryGroundGoalTask(teacher_tasks.GoalTask):
                         done=False)
                 else:
                     agent_sentence = yield TeacherAction()
-        logger.debug("loc: " + str(loc) + " goal: " + str(goal_loc) +
-                     "dist: " + str(dist))
+        # logger.debug("loc: " + str(loc) + " goal: " + str(goal_loc) +
+        #              "dist: " + str(dist))
         yield TeacherAction(reward=-10.0, sentence="Failed", done=True)
 
 
@@ -113,10 +112,10 @@ class GroceryGround(gym.Env):
 
     def __init__(self,
                  with_language=False,
-                 use_image_obs=False,
+                 use_image_obs=True,
                  agent_type='pioneer2dx_noplugin',
                  goal_name='table',
-                 max_steps=160,     
+                 max_steps=160,
                  port=None):
         """
         Args:
@@ -133,7 +132,8 @@ class GroceryGround(gym.Env):
         self._world = gazebo.new_world_from_file(
             os.path.join(social_bot.get_world_dir(), "grocery_ground.world"))
         self._object_types = [
-            'coke_can', 'cube_20k', 'car_wheel', 'plastic_cup', 'beer', 'hammer'
+            'coke_can', 'table', 'bookshelf', 'cube_20k', 'car_wheel', 'plastic_cup',
+            'beer', 'hammer'
         ]
         self._pos_list=list(itertools.product(range(-5, 5), range(-5, 5)))
         self._pos_list.remove((0,0))
@@ -169,7 +169,7 @@ class GroceryGround(gym.Env):
         }
         camera_sensor = {
             'pr2_differential': 'default::pr2_differential::head_tilt_link::head_mount_prosilica_link_sensor',
-            'pioneer2dx_noplugin': ' ',
+            'pioneer2dx_noplugin': 'default::pioneer2dx_noplugin::camera::camera',
             'turtlebot': 'default::turtlebot::kinect::link::camera',
             'create': ' ',
         }
@@ -248,6 +248,7 @@ class GroceryGround(gym.Env):
             obs_data = np.array(
                 self._agent.get_camera_observation(self._agent_camera),
                 copy=False)
+            obs_data = cv2.resize(obs_data,(64,64),interpolation=cv2.INTER_LINEAR)
             obs_data = np.array(obs_data)
         else:
             goal_pose = np.array(self._goal.get_pose()).flatten()
@@ -293,8 +294,6 @@ class GroceryGround(gym.Env):
             obs = self._get_observation()
         self._steps_in_this_episode += 1
         self._cum_reward += teacher_action.reward
-        if teacher_action.done:
-            logger.debug("episode ends at cum reward:" + str(self._cum_reward))
         return obs, teacher_action.reward, teacher_action.done, {}
 
     def _random_insert_objects(self):
@@ -316,7 +315,7 @@ class GroceryGround(gym.Env):
             loc = (obj_pos_list[obj_id][0], obj_pos_list[obj_id][1], 0)
             pose = (np.array(loc), (0, 0, 0))
             self._world.get_model(model_name).set_pose(pose)
-            self._world.step(10)
+            self._world.step(1)
 
 
 def main():
@@ -324,12 +323,21 @@ def main():
     Simple testing of this environment.
     """
     env = GroceryGround()
-    while True:
+    t0 = time.time()
+    interval = 100
+    for i in range(10000000):
         actions = env._agent_control_force * np.random.randn(
             env.action_space.shape[0])
         obs, _, done, _ = env.step(actions)
+        if env._use_image_obs:
+            cv2.imshow('image',obs)
+            cv2.waitKey(1)
         if done:
             env.reset()
+        if (i + 1) % interval == 0:
+            print("steps=%s" % interval +
+                " frame_rate=%s" % (interval / (time.time() - t0)))
+            t0 = time.time()
 
 
 if __name__ == "__main__":
